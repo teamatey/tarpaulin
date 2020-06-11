@@ -6,7 +6,10 @@ const { getDatabaseReference } = require('../lib/mongo');
 
 const { extractValidFields } = require('../lib/validation');
 
-const { getUserById } = require('./users');
+const {
+  getUserById,
+  updateUserCoursesByIds
+} = require('./users');
 
 const CourseSchema = {
   description: { required: false },
@@ -110,17 +113,20 @@ exports.updateCourseStudentsById = async function (id, list) {
   const collection = db.collection('courses');
 
   if (ObjectId.isValid(id)) {
-    let results = await collection
+    await collection
       .updateOne(
         { _id: new ObjectId(id) },
         { $push: { students: { $each: list.add } } }
       );
-    results = await collection
+    await collection
       .updateOne(
         { _id: new ObjectId(id) },
         { $pull: { students: { $in: list.remove } } }
       );
-    return results.matchedCount;
+
+    await updateUserCoursesByIds(id, list);
+
+    return true;
   } else {
     return null;
   }
