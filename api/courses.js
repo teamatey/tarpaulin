@@ -6,8 +6,13 @@ const {
   getCourseById,
   getCoursesByPage,
   updateCourseById,
-  deleteCourseById
+  deleteCourseById,
+  updateCourseStudentsById
 } = require('../models/courses');
+
+const {
+  getUsersByIds
+} = require('../models/users');
 
 const {
   validateAgainstSchema
@@ -19,9 +24,12 @@ const {
 
 // Get a paginated list of all courses.
 router.get('/', async (req, res, next) => {
-  const coursesPage = await getCoursesByPage(
+  let coursesPage = await getCoursesByPage(
     parseInt(req.query.page) || 1
   );
+  for (course of coursesPage.courses) {
+    delete course.students;
+  }
   res.status(200).json(coursesPage);
 });
 
@@ -109,12 +117,62 @@ router.get('/:id/students', authenticate, async (req, res, next) => {
     if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
       // TODO: test this with student field
-      res.status(200).json(course.students);
+      res.status(200).json({
+        students: course.students
+      });
     } else {
       res.status(403).json({
         error: "Not authorized to view this course's student list."
       });
     }
+  } else {
+    next();
+  }
+});
+
+// Update the list of students in a course with req.body.add, req.body.remove.
+// Available to admins and authorized instructors.
+router.post('/:id/students', authenticate, async (req, res, next) => {
+  const course = await getCourseById(req.params.id);
+  if (course) {
+    if (req.role == 'admin'
+      || (req.role == 'instructor' && req.user == course.instructorId)) {
+      const result = await updateCourseStudentsById(req.params.id, req.body);
+      res.status(200).json({
+        link: `/courses/${req.params.id}/students`
+      });
+    } else {
+      res.status(403).json({
+        error: "Not authorized to edit this course's student list."
+      });
+    }
+  } else {
+    next();
+  }
+});
+
+// Return a csv file containing all students in the course.
+// Available to admins and authorized instructors.
+// CSV file contains names, ids, and email addresses.
+router.get('/:id/roster', authenticate, async (req, res, next) => {
+  const course = await getCourseById(req.params.id);
+  if (course) {
+    if (req.role == 'admin'
+      || (req.role == 'instructor' && req.user == course.instructorId)) {
+        // TODO: convert and return csv file
+        let students = await getUsersByIds(course.students);
+        console.log(students);
+        let csv = [];
+        for (student of students) {
+          csv.push([student._id, student.name, student.email]);
+        }
+        res.setHeader('Content-Type', 'text/csv');
+        res.send(csv);
+      } else {
+        res.status(403).json({
+          error: "Not authorized to obtain this course's roster."
+        });
+      }
   } else {
     next();
   }

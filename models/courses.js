@@ -104,3 +104,24 @@ exports.deleteCourseById = async function (id) {
     return null;
   }
 };
+
+exports.updateCourseStudentsById = async function (id, list) {
+  const db = getDatabaseReference();
+  const collection = db.collection('courses');
+
+  if (ObjectId.isValid(id)) {
+    let results = await collection
+      .updateOne(
+        { _id: new ObjectId(id) },
+        { $push: { students: { $each: list.add } } }
+      );
+    results = await collection
+      .updateOne(
+        { _id: new ObjectId(id) },
+        { $pull: { students: { $in: list.remove } } }
+      );
+    return results.matchedCount;
+  } else {
+    return null;
+  }
+};

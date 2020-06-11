@@ -56,6 +56,19 @@ exports.getUserById = async function (id, includePassword) {
   }
 };
 
+exports.getUsersByIds = async function (ids) {
+  const db = getDatabaseReference();
+  const collection = db.collection('users');
+
+  const validIds = ids.map(id => new ObjectId(id));
+
+  let results = await collection
+    .find( { _id: { $in: validIds } } )
+    .toArray();
+
+  return results;
+}
+
 exports.getUserByEmail = async function (email, includePassword) {
   const db = getDatabaseReference();
   const collection = db.collection('users');
