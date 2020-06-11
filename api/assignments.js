@@ -11,7 +11,8 @@ const {
 const {
   insertAssignmentByCourseId,
   getAssignmentById,
-  updateAssignmentById
+  updateAssignmentById,
+  deleteAssignmentById
 } = require('../models/assignments');
 
 // Create an assignment.
@@ -91,6 +92,32 @@ router.patch('/:id', authenticate, async (req, res, next) => {
     res.status(400).json({
       error: "Updating assignment requires title, points, and/or due date. Updating courseId is disallowed."
     });
+  }
+});
+
+// Delete an assignment and all submissions tied to it.
+// Available to admins and authorized instructors.
+router.delete('/:id', authenticate, async (req, res, next) => {
+  const assignment = await getAssignmentById(req.params.id);
+  const course = assignment ?
+    await getCourseById(assignment.courseId) : null;
+  if (assignment && course) {
+    if (req.role == 'admin'
+      || (req.role == 'instructor' && req.user == course.instructorId)) {
+        const result = await deleteAssignmentById(req.params.id);
+        if (result) {
+          res.status(204).json();
+        } else {
+          const err = "Could not delete assignment by id.";
+          next(err);
+        }
+      } else {
+        res.status(403).json({
+          error: "Not authorized to delete this assignment."
+        });
+      }
+  } else {
+    next();
   }
 });
 

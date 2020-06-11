@@ -65,3 +65,39 @@ exports.updateAssignmentById = async (id, assignment) => {
     return null;
   }
 };
+
+exports.deleteAssignmentById = async (id) => {
+  const db = getDatabaseReference();
+  let collection = db.collection('assignments');
+
+  // First, delete submissions.
+  if (ObjectId.isValid(id)) {
+    const results = await collection
+      .find( { _id: new ObjectId(id) } )
+      .toArray();
+
+    const assignment = results[0];
+
+    collection = db.collection('submissions');
+
+    // TODO: If errors, map new ObjectId(id) to assignment.submissions
+    //   Obviously, make assignment 'let' first.
+    if (assignment && assignment.submissions) {
+      await collection
+        .deleteMany(
+          { _id: { $in: assignment.submissions } }
+        );
+    }
+
+    collection = db.collection('assignments');
+    const result = await collection
+      .deleteOne(
+        { _id: new ObjectId(id) }
+      );
+
+    return result.deletedCount;
+  } else {
+    return null;
+  }
+
+}
