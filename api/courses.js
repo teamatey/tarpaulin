@@ -132,6 +132,8 @@ router.get('/:id/students', authenticate, async (req, res, next) => {
 
 // Update the list of students in a course with req.body.add, req.body.remove.
 // Available to admins and authorized instructors.
+// TODO: adjust the student objects too, such that fetching student
+// also fetches their courses
 router.post('/:id/students', authenticate, async (req, res, next) => {
   const course = await getCourseById(req.params.id);
   if (course) {
@@ -173,6 +175,18 @@ router.get('/:id/roster', authenticate, async (req, res, next) => {
           error: "Not authorized to obtain this course's roster."
         });
       }
+  } else {
+    next();
+  }
+});
+
+// Return assignments for the course.
+router.get('/:id/assignments', async (req, res, next) => {
+  const course = await getCourseById(req.params.id);
+  if (course) {
+      res.status(200).json({
+        assignments: course.assignments
+      });
   } else {
     next();
   }
