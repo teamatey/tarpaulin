@@ -1,4 +1,6 @@
-const { ObjectId } = require('mongodb');
+const { ObjectId, GridFSBucket } = require('mongodb');
+
+const fs = require('fs');
 
 const { getDatabaseReference } = require('../lib/mongo');
 
@@ -11,6 +13,14 @@ const AssignmentSchema = {
   due: { required: true }
 };
 exports.AssignmentSchema = AssignmentSchema;
+
+// Does not contain file, as validateAgainstSchema cannot validate it.
+const SubmissionSchema = {
+  assignmentId: { required: true },
+  studentId: { required: true },
+  timestamp: { required: true }
+};
+exports.SubmissionSchema = SubmissionSchema;
 
 // TODO: Consider an 'assignment' collection; better than courses?
 exports.insertAssignmentByCourseId = async (id, assignment) => {
@@ -72,16 +82,17 @@ exports.deleteAssignmentById = async (id) => {
 
   // First, delete submissions.
   if (ObjectId.isValid(id)) {
-    const results = await collection
+    let assignment = await collection
       .find( { _id: new ObjectId(id) } )
       .toArray();
 
-    const assignment = results[0];
+    assignment = assignment.submissions.map(s => new ObjectId(s));
 
     collection = db.collection('submissions');
 
     // TODO: If errors, map new ObjectId(id) to assignment.submissions
     //   Obviously, make assignment 'let' first.
+    // I did this; confirm it work slater.
     if (assignment && assignment.submissions) {
       await collection
         .deleteMany(
@@ -99,5 +110,80 @@ exports.deleteAssignmentById = async (id) => {
   } else {
     return null;
   }
+};
 
-}
+exports.insertSubmissionByCourseId = async (id, submission) => {
+  return new Promise( (resolve, reject) => {
+    const db = getDatabaseReference();
+    const bucket = new GridFSBucket(db,
+      { bucketName: 'submissions' }
+    );
+
+    const metadata = {
+      contentType: submission.contentType,
+      assignmentId: submission.assignmentId,
+      studentId: submission.studentId,
+      timestamp: submission.timestamp
+    };
+
+    const uploadStream = bucket.openUploadStream(
+      submission.filename,
+      { metadata: metadata }
+    );
+
+    fs.createReadStream(submission.path).pipe(uploadStream)
+      .on('error', (err) => {
+        reject(err);
+      })
+      .on('finish', (result) => {
+        // TODO: Append id to assignment
+        resolve(result._id);
+      });
+  });
+};
+
+exports.getSubmissionById = async (id) => {
+  const db = getDatabaseReference();
+  const bucket = new GridFSBucket(db,
+    { bucketName: 'submissions' }
+  );
+
+  if (ObjectId.isValid(id)) {
+    const results = await bucket
+      .find( { _id: new ObjectId(id) } )
+      .toArray();
+    return results[0];
+  } else {
+    return null;
+  }
+};
+
+exports.getSubmissionByFilename = async (filename) => {
+  const db = getDatabaseReference();
+  const bucket = new GridFSBucket(db,
+    { bucketName: 'submissions' }
+  );
+
+  const results = await bucket
+    .find( { filename: filename } )
+    .toArray();
+  return results[0];
+};
+
+exports.getSubmissionDownloadById = (id) => {
+  const db = getDatabaseReference();
+  const bucket = new GridFSBucket(db,
+    { bucketName: 'submissions' }
+  );
+
+  return bucket.openDownloadStream(new ObjectId(id));
+};
+
+exports.getSubmissionDownloadByFilename = (filename) => {
+  const db = getDatabaseReference();
+  const bucket = new GridFSBucket(db,
+    { bucketName: 'submissions' }
+  );
+
+  return bucket.openDownloadStreamByName(filename);
+};

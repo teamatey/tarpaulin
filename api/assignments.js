@@ -1,6 +1,10 @@
 const router = require('express').Router();
 
 const {
+  validateAgainstSchema
+} = require('../lib/validation');
+
+const {
   authenticate
 } = require('../lib/authentication');
 
@@ -9,11 +13,34 @@ const {
 } = require('../models/courses');
 
 const {
+  AssignmentSchema,
+  SubmissionSchema,
   insertAssignmentByCourseId,
   getAssignmentById,
   updateAssignmentById,
-  deleteAssignmentById
+  deleteAssignmentById,
+  insertSubmissionByCourseId,
+  getSubmissionById,
+  getSubmissionByFilename,
+  getSubmissionDownloadById,
+  getSubmissionDownloadByFilename
 } = require('../models/assignments');
+
+const crypto = require('crypto');
+const path = require('path');
+
+const multer = require('multer');
+const upload = multer( {
+  storage: multer.diskStorage({
+    destination: `${__dirname}/../submissions`,
+    filename: (req, file, callback) => {
+      const filename = crypto.pseudoRandomBytes(16).toString('hex');
+      const extension = path.extname(file.originalname);
+      callback(null, `${filename}${extension}`);
+    }
+  })
+});
+
 
 // Create an assignment.
 // Available to admins and authorized instructors.
@@ -22,14 +49,20 @@ router.post('/', authenticate, async (req, res, next) => {
   if (course) {
     if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
-        const id = await insertAssignmentByCourseId(req.body.courseId, req.body);
-        if (id) {
-          res.status(200).json({
-            id: id
-          });
+        if (validateAgainstSchema(req.body, AssignmentSchema)) {
+          const id = await insertAssignmentByCourseId(req.body.courseId, req.body);
+          if (id) {
+            res.status(200).json({
+              id: id
+            });
+          } else {
+            const err = "Failed to insert assignment.";
+            next(err);
+          }
         } else {
-          const err = "Failed to insert assignment.";
-          next(err);
+          res.status(400).json({
+            error: "Assignment creation requires courseId, title, points, and due date."
+          });
         }
     } else {
       res.status(403).json({
@@ -120,5 +153,104 @@ router.delete('/:id', authenticate, async (req, res, next) => {
     next();
   }
 });
+
+// Get assignment submissions.....
+// TODO:
+
+// Create submission for an assignment.
+// Available to authorized students (enrolled in course).
+router.post('/:id/submissions', upload.single('file'), authenticate, async (req, res, next) => {
+  const assignment = await getAssignmentById(req.params.id);
+  const course = assignment ?
+    await getCourseById(assignment.courseId) : null;
+  if (assignment && course) {
+    if (req.role == 'student' && course.students.includes(req.user)) {
+        if (req.file && validateAgainstSchema(req.body, SubmissionSchema)
+          && (req.params.id == req.body.assignmentId)) {
+          const submission = {
+            assignmentId: req.params.id,
+            studentId: req.body.studentId,
+            timestamp: req.body.timestamp,
+            filename: req.file.filename,
+            contentType: req.file.mimetype,
+            path: req.file.path
+          };
+          const id = await insertSubmissionByCourseId(
+            assignment.courseId, submission);
+          if (id) {
+            res.status(200).json({
+              id: id,
+              filename: req.file.filename,
+              link: `/assignments/${req.params.id}/submissions/${req.file.filename}`
+            });
+          } else {
+            const err = "Could not insert submission by course id."
+            next(err);
+          }
+
+        } else {
+          res.status(400).json({
+            error: "Submission requires a file, matching assignmentId, studentId, and timestamp."
+          });
+        }
+      } else {
+        res.status(403).json({
+          error: "Not authorized to submit for this assignment."
+        });
+      }
+  } else {
+    next();
+  }
+});
+
+router.get('/:aid/submissions2/:sid', async (req, res, next) => {
+  res.status(200).json(
+    await getSubmissionById(req.params.sid)
+  );
+});
+
+
+// Get submission download by filename.
+router.get('/:aid/submissions/:sfn', authenticate, async (req, res, next) => {
+
+
+  const assignment = await getAssignmentById(req.params.aid);
+  const submission = await getSubmissionByFilename(req.params.sfn);
+  const course = assignment ?
+    await getCourseById(assignment.courseId) : null;
+
+  console.log("assignment=", assignment);
+  console.log("sfn=", req.params.sfn);
+  console.log("submission=", submission);
+  console.log("course=", course);
+
+  if (assignment && submission && course) {
+    if (req.role == 'admin'
+      || (req.role == 'instructor' && req.user == course.instructorId)
+      || (req.role == 'student' && req.user == submission.metadata.studentId)) {
+        getSubmissionDownloadByFilename(submission.filename)
+          .on('file', (file) => {
+            res.status(200).type(file.metadata.contentType);
+          })
+          .on('error', (err) => {
+            if (err.code === 'ENOENT') {
+              next();
+            } else {
+              next(err);
+            }
+          })
+          .pipe(res);
+      } else {
+        res.status(403).json({
+          error: "Not authorized to view this submission."
+        });
+      }
+  } else {
+    next();
+  }
+
+});
+
+
 
 module.exports = router;
