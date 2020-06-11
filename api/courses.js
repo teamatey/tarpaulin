@@ -29,6 +29,8 @@ router.get('/', async (req, res, next) => {
   );
   for (course of coursesPage.courses) {
     delete course.students;
+    // TODO: uncomment this
+    delete course.assignments;
   }
   res.status(200).json(coursesPage);
 });
@@ -86,7 +88,6 @@ router.patch('/:id', authenticate, async (req, res, next) => {
     next();
   }
 });
-module.exports = router;
 
 // Delete a course by id. Available only to admins.
 router.delete('/:id', authenticate, async (req, res, next) => {
@@ -191,3 +192,5 @@ router.get('/:id/assignments', async (req, res, next) => {
     next();
   }
 });
+
+module.exports = router;

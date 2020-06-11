@@ -95,6 +95,7 @@ exports.getCoursesByPage = async function (page) {
   };
 };
 
+// TODO: Delete all assignments tied to the course.
 exports.deleteCourseById = async function (id) {
   const db = getDatabaseReference();
   const collection = db.collection('courses');
