@@ -100,17 +100,19 @@ exports.updateUserCoursesByIds = async function (course, list) {
   const db = getDatabaseReference();
   const collection = db.collection('users');
 
-  const add = list.add.map(a => new ObjectId(a));
-  const rem = list.remove.map(r => new ObjectId(r));
-
-  await collection.updateMany(
-    { _id: { $in: add } },
-    { $push: { courses: course } }
-  );
+  const add = list.add ?
+    list.add.map(a => new ObjectId(a)) : [];
+  const rem = list.remove ?
+    list.remove.map(r => new ObjectId(r)) : [];
 
   await collection.updateMany(
     { _id: { $in: rem } },
     { $pull: { courses: course } }
+  );
+
+  await collection.updateMany(
+    { _id: { $in: add } },
+    { $push: { courses: course } }
   );
 
   return;

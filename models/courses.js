@@ -21,6 +21,13 @@ const CourseSchema = {
 };
 exports.CourseSchema = CourseSchema;
 
+const CourseSearchParameterSchema = {
+  page: { required: false },
+  subject: { required: false },
+  number: { required: false },
+  term: { required: false }
+};
+
 exports.insertCourse = async function (course) {
   let validCourse = extractValidFields(course, CourseSchema);
   validCourse.students = [];
@@ -30,8 +37,8 @@ exports.insertCourse = async function (course) {
 
   const list = {
     add: [validCourse.instructorId]
-  }
-  updateUserCoursesByIds(result.insertedId, list);
+  };
+  await updateUserCoursesByIds(result.insertedId, list);
 
   return result.insertedId;
 };
@@ -54,7 +61,7 @@ exports.updateCourseById = async function (id, course) {
   const collection = db.collection('courses');
   if (ObjectId.isValid(id)) {
     const validCourseParts = extractValidFields(course, CourseSchema);
-    let results = await collection.find({ _id: new ObjectId(id) });
+    let results = await collection.find({ _id: new ObjectId(id) }).toArray();
     let instructor = results[0].instructorId;
 
     results = await collection
@@ -75,18 +82,27 @@ exports.updateCourseById = async function (id, course) {
   }
 };
 
-exports.getCoursesByPage = async function (page) {
+exports.getCoursesByQuery = async function (query) {
   const db = getDatabaseReference();
   const collection = db.collection('courses');
 
+  const validQuery = extractValidFields(query, CourseSearchParameterSchema);
+
   const count = await collection.countDocuments();
   const lastPage = Math.ceil(count / pageSize);
+  let page = parseInt(validQuery.page) || 1;
   page = page > lastPage ? lastPage : page;
   page = page < 1 ? 1 : page;
   const offset = (page - 1) * pageSize;
 
-  const results = await collection.find({}).
-    sort({ _id: 1 })
+  let search = {};
+  if (validQuery.subject) search['subject'] = validQuery.subject;
+  if (validQuery.number) search['number'] = validQuery.number;
+  if (validQuery.term) search['term'] = validQuery.term;
+
+  const results = await collection
+    .find(search)
+    .sort({ _id: 1 })
     .skip(offset)
     .limit(pageSize)
     .toArray();
@@ -117,13 +133,13 @@ exports.deleteCourseById = async function (id) {
   const collection = db.collection('courses');
 
   if (ObjectId.isValid(id)) {
-    let results = await collection.find( { _id: new ObjectId(id) } );
+    let results = await collection.find( { _id: new ObjectId(id) } ).toArray();
     const instructor = results[0].instructorId;
     const list = {
       add: [],
       remove: [instructor]
     };
-    updateUserCoursesByIds(id, list);
+    await updateUserCoursesByIds(id, list);
 
     results = await collection
       .deleteOne({ _id: new ObjectId(id) });

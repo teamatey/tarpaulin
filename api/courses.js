@@ -1,10 +1,12 @@
 const router = require('express').Router();
 
+const { ObjectId } = require('mongodb');
+
 const {
   CourseSchema,
   insertCourse,
   getCourseById,
-  getCoursesByPage,
+  getCoursesByQuery,
   updateCourseById,
   deleteCourseById,
   updateCourseStudentsById
@@ -24,9 +26,7 @@ const {
 
 // Get a paginated list of all courses.
 router.get('/', async (req, res, next) => {
-  let coursesPage = await getCoursesByPage(
-    parseInt(req.query.page) || 1
-  );
+  let coursesPage = await getCoursesByQuery(req.query);
   for (course of coursesPage.courses) {
     delete course.students;
     delete course.assignments;
@@ -38,7 +38,8 @@ router.get('/', async (req, res, next) => {
 router.post('/', authenticate, async (req, res, next) => {
   try {
     if (req.role == 'admin') {
-      if (validateAgainstSchema(req.body, CourseSchema)) {
+      if (validateAgainstSchema(req.body, CourseSchema)
+        && ObjectId.isValid(req.body.instructorId)) {
         const id = await insertCourse(req.body);
         res.status(200).json({
           id: id
@@ -76,18 +77,26 @@ router.get('/:id', async (req, res, next) => {
 
 // Update a course by id. Available to admins
 // and instructors whose id matches the course's instructorID.
-// TODO: update instructor
 router.patch('/:id', authenticate, async (req, res, next) => {
   try {
     const course = await getCourseById(req.params.id);
     if (course) {
       if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
-        const result = await updateCourseById(req.params.id, req.body);
-        res.status(200).json({
-          id: req.params.id,
-          link: `/courses/${req.params.id}`
-        });
+        if (req.body &&
+          (req.body.subject || req.body.number
+          || req.body.title || req.body.term)
+          && (!req.body.instructorId || ObjectId.isValid(req.body.instructorId))) {
+          const result = await updateCourseById(req.params.id, req.body);
+          res.status(200).json({
+            id: req.params.id,
+            link: `/courses/${req.params.id}`
+          });
+        } else {
+          res.status(400).json({
+            error: "Updating course requires valid subject, number, title, term, and/or instructorId."
+          });
+        }
       } else {
         res.status(403).json({
           error: "Not authorized to update this course."

@@ -193,6 +193,7 @@ exports.getSubmissionDownloadByFilename = (filename) => {
   return bucket.openDownloadStreamByName(filename);
 };
 
+// TODO: Refactor into .find(search)
 exports.getSubmissionsByAssignmentIdAndQuery = async (id, query) => {
   const db = getDatabaseReference();
   const collection = db.collection('submissions');
