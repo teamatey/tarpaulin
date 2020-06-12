@@ -22,6 +22,11 @@ const SubmissionSchema = {
 };
 exports.SubmissionSchema = SubmissionSchema;
 
+const SubmissionSearchParameterSchema = {
+  page: { required: false },
+  studentId: { required: false }
+};
+
 // TODO: Consider an 'assignment' collection; better than courses?
 exports.insertAssignmentByCourseId = async (id, assignment) => {
   const db = getDatabaseReference();
@@ -170,14 +175,14 @@ exports.getSubmissionByFilename = async (filename) => {
   return results[0];
 };
 
-exports.getSubmissionDownloadById = (id) => {
-  const db = getDatabaseReference();
-  const bucket = new GridFSBucket(db,
-    { bucketName: 'submissions' }
-  );
-
-  return bucket.openDownloadStream(new ObjectId(id));
-};
+// exports.getSubmissionDownloadById = (id) => {
+//   const db = getDatabaseReference();
+//   const bucket = new GridFSBucket(db,
+//     { bucketName: 'submissions' }
+//   );
+//
+//   return bucket.openDownloadStream(new ObjectId(id));
+// };
 
 exports.getSubmissionDownloadByFilename = (filename) => {
   const db = getDatabaseReference();
@@ -186,4 +191,60 @@ exports.getSubmissionDownloadByFilename = (filename) => {
   );
 
   return bucket.openDownloadStreamByName(filename);
+};
+
+exports.getSubmissionsByAssignmentIdAndQuery = async (id, query) => {
+  const db = getDatabaseReference();
+  const collection = db.collection('submissions');
+  const bucket = new GridFSBucket(db,
+    { bucketName: 'submissions' }
+  );
+
+  const validQuery = extractValidFields(query, SubmissionSearchParameterSchema);
+
+  let page = validQuery.page ? validQuery.page : 1;
+  const pageSize = 5;
+  const count = await collection.countDocuments();
+  const lastPage = Math.ceil(count / pageSize);
+  page = page > lastPage ? lastPage : page;
+  page = page < 1 ? 1 : page;
+  const offset = (page - 1) * pageSize;
+
+  if (ObjectId.isValid(id)) {
+    const results = validQuery.studentId ?
+      await bucket
+      .find( { "metadata.assignmentId": id }, { "metadata.studentId": validQuery.studentId } )
+      .sort( { _id: 1 } )
+      .skip(offset)
+      .limit(pageSize)
+      .toArray() :
+      await bucket
+      .find( { "metadata.assignmentId": id })
+      .sort( { _id: 1 } )
+      .skip(offset)
+      .limit(pageSize)
+      .toArray();
+
+    const links = {};
+    if (page < lastPage) {
+      links.nextPage = `/courses/?page=${page + 1}`;
+      links.lastPage = `/courses/?page=${lastPage}`;
+    }
+    if (page > 1 ) {
+      links.prevPage = `/courses/?page=${page - 1}`;
+      links.firstPage = `/courses/?page=1`;
+    }
+
+    return {
+      submissions: results,
+      page: page,
+      totalPages: lastPage,
+      pageSize: pageSize,
+      totalSubmissions: count,
+      links: links
+    };
+
+  } else {
+    return null;
+  }
 };

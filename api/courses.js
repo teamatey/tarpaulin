@@ -29,7 +29,6 @@ router.get('/', async (req, res, next) => {
   );
   for (course of coursesPage.courses) {
     delete course.students;
-    // TODO: uncomment this
     delete course.assignments;
   }
   res.status(200).json(coursesPage);
@@ -61,6 +60,7 @@ router.get('/:id', async (req, res, next) => {
   const course = await getCourseById(req.params.id);
   if (course) {
     delete course.students;
+    delete course.assignments;
     res.status(200).json(course);
   } else {
     next();

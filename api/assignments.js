@@ -23,7 +23,8 @@ const {
   getSubmissionById,
   getSubmissionByFilename,
   getSubmissionDownloadById,
-  getSubmissionDownloadByFilename
+  getSubmissionDownloadByFilename,
+  getSubmissionsByAssignmentIdAndQuery
 } = require('../models/assignments');
 
 const crypto = require('crypto');
@@ -203,6 +204,7 @@ router.post('/:id/submissions', upload.single('file'), authenticate, async (req,
   }
 });
 
+// Wait, that's cheating!
 router.get('/:aid/submissions2/:sid', async (req, res, next) => {
   res.status(200).json(
     await getSubmissionById(req.params.sid)
@@ -251,6 +253,36 @@ router.get('/:aid/submissions/:sfn', authenticate, async (req, res, next) => {
 
 });
 
+// Get all submissions for an assignment. Includes download links.
+// Available to admins and authorized instructors.
+// TODO: paginate, studentid search parameter
+//  ALSO check if the other get routes ask for parameters???
+router.get('/:id/submissions', authenticate, async (req, res, next) => {
+  const assignment = await getAssignmentById(req.params.id);
+  const course = assignment ?
+    await getCourseById(assignment.courseId) : null;
+
+  if (assignment && course) {
+    if (req.role == 'admin'
+      || (req.role == 'instructor' && req.user == course.instructorId)) {
+        let results = await getSubmissionsByAssignmentIdAndQuery(req.params.id, req.query);
+
+        for (s of results.submissions) {
+          s.metadata.link =
+            `/assignments/${s.metadata.assignmentId}/submissions/${s.filename}`;
+        }
+        results.submissions = results.submissions.map(s => s.metadata);
+
+        res.status(200).json(results);
+      } else {
+        res.status(403).json({
+          error: "Not authorized to view submissions for this assignment."
+        })
+      }
+  } else {
+    next();
+  }
+});
 
 
 module.exports = router;
