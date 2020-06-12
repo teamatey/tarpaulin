@@ -27,6 +27,12 @@ exports.insertCourse = async function (course) {
   const db = getDatabaseReference();
   const collection = db.collection('courses');
   const result = await collection.insertOne(validCourse);
+
+  const list = {
+    add: [validCourse.instructorId]
+  }
+  updateUserCoursesByIds(result.insertedId, list);
+
   return result.insertedId;
 };
 
@@ -48,11 +54,21 @@ exports.updateCourseById = async function (id, course) {
   const collection = db.collection('courses');
   if (ObjectId.isValid(id)) {
     const validCourseParts = extractValidFields(course, CourseSchema);
-    const results = await collection
+    let results = await collection.find({ _id: new ObjectId(id) });
+    let instructor = results[0].instructorId;
+
+    results = await collection
       .updateOne(
         { _id: new ObjectId(id) },
         { $set: validCourseParts }
       );
+
+      const list = {
+        add: [validCourseParts.instructorId ? validCourseParts.instructorId : null],
+        rem: [instructor]
+      };
+      updateUserCoursesByIds(id, list);
+
       return results.matchedCount > 0;
   } else {
     return null;

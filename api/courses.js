@@ -35,122 +35,144 @@ router.get('/', async (req, res, next) => {
 });
 
 // Create a new course. Requires an authenticated admin.
-// TODO: Validate all instructor ids.
 router.post('/', authenticate, async (req, res, next) => {
-  if (req.role == 'admin') {
-    if (validateAgainstSchema(req.body, CourseSchema)) {
-      const id = await insertCourse(req.body);
-      res.status(200).json({
-        id: id
-      });
+  try {
+    if (req.role == 'admin') {
+      if (validateAgainstSchema(req.body, CourseSchema)) {
+        const id = await insertCourse(req.body);
+        res.status(200).json({
+          id: id
+        });
+      } else {
+        res.status(400).json({
+          error: "Course creation requires valid subject, number, title, term, and instructor id(s)."
+        });
+      }
     } else {
-      res.status(400).json({
-        error: "Course creation requires valid subject, number, title, term, and instructor id(s)."
+      res.status(403).json({
+        error: "Not authorized to create a new course."
       });
     }
-  } else {
-    res.status(403).json({
-      error: "Not authorized to create a new course."
-    });
+  } catch (err) {
+    next(err);
   }
 });
 
 // Get a course by id.
 router.get('/:id', async (req, res, next) => {
-  const course = await getCourseById(req.params.id);
-  if (course) {
-    delete course.students;
-    delete course.assignments;
-    res.status(200).json(course);
-  } else {
-    next();
+  try {
+    const course = await getCourseById(req.params.id);
+    if (course) {
+      delete course.students;
+      delete course.assignments;
+      res.status(200).json(course);
+    } else {
+      next();
+    }
+  } catch (err) {
+    next(err);
   }
 });
 
 // Update a course by id. Available to admins
 // and instructors whose id matches the course's instructorID.
+// TODO: update instructor
 router.patch('/:id', authenticate, async (req, res, next) => {
-  const course = await getCourseById(req.params.id);
-  if (course) {
-    if (req.role == 'admin'
-    || (req.role == 'instructor' && req.user == course.instructorId)) {
-      const result = await updateCourseById(req.params.id, req.body);
-      res.status(200).json({
-        id: req.params.id,
-        link: `/courses/${req.params.id}`
-      });
+  try {
+    const course = await getCourseById(req.params.id);
+    if (course) {
+      if (req.role == 'admin'
+      || (req.role == 'instructor' && req.user == course.instructorId)) {
+        const result = await updateCourseById(req.params.id, req.body);
+        res.status(200).json({
+          id: req.params.id,
+          link: `/courses/${req.params.id}`
+        });
+      } else {
+        res.status(403).json({
+          error: "Not authorized to update this course."
+        });
+      }
     } else {
-      res.status(403).json({
-        error: "Not authorized to update this course."
-      });
+      next();
     }
-  } else {
-    next();
+  } catch (err) {
+    next(err);
   }
 });
 
 // Delete a course by id. Available only to admins.
 router.delete('/:id', authenticate, async (req, res, next) => {
-  if (req.role == 'admin') {
-    const course = getCourseById(req.params.id);
-    if (course) {
-      const result = await deleteCourseById(req.params.id);
-      if (result) {
-        res.status(204).json();
+  try {
+    if (req.role == 'admin') {
+      const course = getCourseById(req.params.id);
+      if (course) {
+        const result = await deleteCourseById(req.params.id);
+        if (result) {
+          res.status(204).json();
+        } else {
+          next(err);
+        }
       } else {
-        next(err);
+        next();
       }
     } else {
-      next();
+      res.status(403).json({
+        error: "Not authorized to delete this course."
+      });
     }
-  } else {
-    res.status(403).json({
-      error: "Not authorized to delete this course."
-    });
+  } catch (err) {
+    next(err);
   }
 });
 
 // Get a list of students in a course.
 // Available to admins and authorized instructors.
 router.get('/:id/students', authenticate, async (req, res, next) => {
-  const course = await getCourseById(req.params.id);
-  if (course) {
-    if (req.role == 'admin'
+  try {
+    const course = await getCourseById(req.params.id);
+    if (course) {
+      if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
-      // TODO: test this with student field
-      res.status(200).json({
-        students: course.students
-      });
+        // TODO: test this with student field
+        res.status(200).json({
+          students: course.students
+        });
+      } else {
+        res.status(403).json({
+          error: "Not authorized to view this course's student list."
+        });
+      }
     } else {
-      res.status(403).json({
-        error: "Not authorized to view this course's student list."
-      });
+      next();
     }
-  } else {
-    next();
+  } catch (err) {
+    next(err);
   }
 });
 
 // Update the list of students in a course with req.body.add, req.body.remove.
 // Available to admins and authorized instructors.
-// TODO: adjust the student objects too, such that fetching student
-// also fetches their courses
 router.post('/:id/students', authenticate, async (req, res, next) => {
-  const course = await getCourseById(req.params.id);
-  if (course) {
-    if (req.role == 'admin'
+  try {
+    const course = await getCourseById(req.params.id);
+    if (course) {
+      if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
-      const result = await updateCourseStudentsById(req.params.id, req.body);
-      res.status(200).json({
-        link: `/courses/${req.params.id}/students`
-      });
+        const result = await updateCourseStudentsById(req.params.id, req.body);
+        res.status(200).json({
+          link: `/courses/${req.params.id}/students`
+        });
+      } else {
+        res.status(403).json({
+          error: "Not authorized to edit this course's student list."
+        });
+      }
     } else {
-      res.status(403).json({
-        error: "Not authorized to edit this course's student list."
-      });
+      next();
     }
-  } else {
-    next();
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -158,11 +180,11 @@ router.post('/:id/students', authenticate, async (req, res, next) => {
 // Available to admins and authorized instructors.
 // CSV file contains names, ids, and email addresses.
 router.get('/:id/roster', authenticate, async (req, res, next) => {
-  const course = await getCourseById(req.params.id);
-  if (course) {
-    if (req.role == 'admin'
+  try {
+    const course = await getCourseById(req.params.id);
+    if (course) {
+      if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
-        // TODO: convert and return csv file
         let students = await getUsersByIds(course.students);
         console.log(students);
         let csv = [];
@@ -176,20 +198,27 @@ router.get('/:id/roster', authenticate, async (req, res, next) => {
           error: "Not authorized to obtain this course's roster."
         });
       }
-  } else {
-    next();
+    } else {
+      next();
+    }
+  } catch (err) {
+    next(err);
   }
 });
 
 // Return assignments for the course.
 router.get('/:id/assignments', async (req, res, next) => {
-  const course = await getCourseById(req.params.id);
-  if (course) {
+  try {
+    const course = await getCourseById(req.params.id);
+    if (course) {
       res.status(200).json({
         assignments: course.assignments
       });
-  } else {
-    next();
+    } else {
+      next();
+    }
+  } catch (err) {
+    next(err);
   }
 });
 

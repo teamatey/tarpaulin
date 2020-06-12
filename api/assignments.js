@@ -46,9 +46,10 @@ const upload = multer( {
 // Create an assignment.
 // Available to admins and authorized instructors.
 router.post('/', authenticate, async (req, res, next) => {
-  const course = getCourseById(req.body.courseId);
-  if (course) {
-    if (req.role == 'admin'
+  try {
+    const course = getCourseById(req.body.courseId);
+    if (course) {
+      if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
         if (validateAgainstSchema(req.body, AssignmentSchema)) {
           const id = await insertAssignmentByCourseId(req.body.courseId, req.body);
@@ -65,26 +66,33 @@ router.post('/', authenticate, async (req, res, next) => {
             error: "Assignment creation requires courseId, title, points, and due date."
           });
         }
+      } else {
+        res.status(403).json({
+          error: "Not authorized to create an assignment for this course."
+        });
+      }
     } else {
-      res.status(403).json({
-        error: "Not authorized to create an assignment for this course."
+      res.status(400).json({
+        error: "No course found with that id."
       });
     }
-  } else {
-    res.status(400).json({
-      error: "No course found with that id."
-    });
+  } catch (err) {
+    next(err);
   }
 });
 
 // Get an assignment by id, excluding list of submissions.
 router.get('/:id', async (req, res, next) => {
-  const assignment = await getAssignmentById(req.params.id);
-  if (assignment) {
-    delete assignment.submissions;
-    res.status(200).json(assignment);
-  } else {
-    next();
+  try {
+    const assignment = await getAssignmentById(req.params.id);
+    if (assignment) {
+      delete assignment.submissions;
+      res.status(200).json(assignment);
+    } else {
+      next();
+    }
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -96,14 +104,15 @@ router.get('/:id', async (req, res, next) => {
 // NOTE: Confusingly, the OpenAPI suggests that one can update
 //  the courseId of an assignment. I disallow this.
 router.patch('/:id', authenticate, async (req, res, next) => {
-  if (req.body && !req.body.courseId &&
-    (req.body.title || req.body.points || req.body.due)) {
-      const assignment = await getAssignmentById(req.params.id);
-      const course = assignment ?
+  try {
+    if (req.body && !req.body.courseId &&
+      (req.body.title || req.body.points || req.body.due)) {
+        const assignment = await getAssignmentById(req.params.id);
+        const course = assignment ?
         await getCourseById(assignment.courseId) : null;
 
-      if (assignment && course) {
-        if (req.role == 'admin'
+        if (assignment && course) {
+          if (req.role == 'admin'
           || (req.role == 'instructor' && req.user == course.instructorId)) {
             const result = await updateAssignmentById(req.params.id, req.body);
             if (result) {
@@ -119,24 +128,28 @@ router.patch('/:id', authenticate, async (req, res, next) => {
               error: "Not authorized to update this assignment."
             });
           }
+        } else {
+          next();
+        }
       } else {
-        next();
+        res.status(400).json({
+          error: "Updating assignment requires title, points, and/or due date. Updating courseId is disallowed."
+        });
       }
-  } else {
-    res.status(400).json({
-      error: "Updating assignment requires title, points, and/or due date. Updating courseId is disallowed."
-    });
+  } catch (err) {
+    next(err);
   }
 });
 
 // Delete an assignment and all submissions tied to it.
 // Available to admins and authorized instructors.
 router.delete('/:id', authenticate, async (req, res, next) => {
-  const assignment = await getAssignmentById(req.params.id);
-  const course = assignment ?
+  try {
+    const assignment = await getAssignmentById(req.params.id);
+    const course = assignment ?
     await getCourseById(assignment.courseId) : null;
-  if (assignment && course) {
-    if (req.role == 'admin'
+    if (assignment && course) {
+      if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
         const result = await deleteAssignmentById(req.params.id);
         if (result) {
@@ -150,8 +163,11 @@ router.delete('/:id', authenticate, async (req, res, next) => {
           error: "Not authorized to delete this assignment."
         });
       }
-  } else {
-    next();
+    } else {
+      next();
+    }
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -161,13 +177,14 @@ router.delete('/:id', authenticate, async (req, res, next) => {
 // Create submission for an assignment.
 // Available to authorized students (enrolled in course).
 router.post('/:id/submissions', upload.single('file'), authenticate, async (req, res, next) => {
-  const assignment = await getAssignmentById(req.params.id);
-  const course = assignment ?
+  try {
+    const assignment = await getAssignmentById(req.params.id);
+    const course = assignment ?
     await getCourseById(assignment.courseId) : null;
-  if (assignment && course) {
-    if (req.role == 'student' && course.students.includes(req.user)) {
+    if (assignment && course) {
+      if (req.role == 'student' && course.students.includes(req.user)) {
         if (req.file && validateAgainstSchema(req.body, SubmissionSchema)
-          && (req.params.id == req.body.assignmentId)) {
+        && (req.params.id == req.body.assignmentId)) {
           const submission = {
             assignmentId: req.params.id,
             studentId: req.body.studentId,
@@ -178,79 +195,83 @@ router.post('/:id/submissions', upload.single('file'), authenticate, async (req,
           };
           const id = await insertSubmissionByCourseId(
             assignment.courseId, submission);
-          if (id) {
-            res.status(200).json({
-              id: id,
-              filename: req.file.filename,
-              link: `/assignments/${req.params.id}/submissions/${req.file.filename}`
-            });
-          } else {
-            const err = "Could not insert submission by course id."
-            next(err);
-          }
+            if (id) {
+              res.status(200).json({
+                id: id,
+                filename: req.file.filename,
+                link: `/assignments/${req.params.id}/submissions/${req.file.filename}`
+              });
+            } else {
+              const err = "Could not insert submission by course id."
+              next(err);
+            }
 
+          } else {
+            res.status(400).json({
+              error: "Submission requires a file, matching assignmentId, studentId, and timestamp."
+            });
+          }
         } else {
-          res.status(400).json({
-            error: "Submission requires a file, matching assignmentId, studentId, and timestamp."
+          res.status(403).json({
+            error: "Not authorized to submit for this assignment."
           });
         }
       } else {
-        res.status(403).json({
-          error: "Not authorized to submit for this assignment."
-        });
+        next();
       }
-  } else {
-    next();
+  } catch (err) {
+    next(err);
   }
 });
 
-// Wait, that's cheating!
-router.get('/:aid/submissions2/:sid', async (req, res, next) => {
-  res.status(200).json(
-    await getSubmissionById(req.params.sid)
-  );
-});
+// // Wait, that's cheating!
+// router.get('/:aid/submissions2/:sid', async (req, res, next) => {
+//   res.status(200).json(
+//     await getSubmissionById(req.params.sid)
+//   );
+// });
 
 
 // Get submission download by filename.
 router.get('/:aid/submissions/:sfn', authenticate, async (req, res, next) => {
-
-
-  const assignment = await getAssignmentById(req.params.aid);
-  const submission = await getSubmissionByFilename(req.params.sfn);
-  const course = assignment ?
+  try {
+    const assignment = await getAssignmentById(req.params.aid);
+    const submission = await getSubmissionByFilename(req.params.sfn);
+    const course = assignment ?
     await getCourseById(assignment.courseId) : null;
 
-  console.log("assignment=", assignment);
-  console.log("sfn=", req.params.sfn);
-  console.log("submission=", submission);
-  console.log("course=", course);
+    console.log("assignment=", assignment);
+    console.log("sfn=", req.params.sfn);
+    console.log("submission=", submission);
+    console.log("course=", course);
 
-  if (assignment && submission && course) {
-    if (req.role == 'admin'
+    if (assignment && submission && course) {
+      if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)
       || (req.role == 'student' && req.user == submission.metadata.studentId)) {
         getSubmissionDownloadByFilename(submission.filename)
-          .on('file', (file) => {
-            res.status(200).type(file.metadata.contentType);
-          })
-          .on('error', (err) => {
-            if (err.code === 'ENOENT') {
-              next();
-            } else {
-              next(err);
-            }
-          })
-          .pipe(res);
+        .on('file', (file) => {
+          res.status(200).type(file.metadata.contentType);
+        })
+        .on('error', (err) => {
+          if (err.code === 'ENOENT') {
+            next();
+          } else {
+            next(err);
+          }
+        })
+        .pipe(res);
       } else {
         res.status(403).json({
           error: "Not authorized to view this submission."
         });
       }
-  } else {
-    next();
+    } else {
+      next();
+    }
+  } catch (err) {
+    next(err);
   }
-
 });
 
 // Get all submissions for an assignment. Includes download links.
@@ -258,18 +279,19 @@ router.get('/:aid/submissions/:sfn', authenticate, async (req, res, next) => {
 // TODO: paginate, studentid search parameter
 //  ALSO check if the other get routes ask for parameters???
 router.get('/:id/submissions', authenticate, async (req, res, next) => {
-  const assignment = await getAssignmentById(req.params.id);
-  const course = assignment ?
+  try {
+    const assignment = await getAssignmentById(req.params.id);
+    const course = assignment ?
     await getCourseById(assignment.courseId) : null;
 
-  if (assignment && course) {
-    if (req.role == 'admin'
+    if (assignment && course) {
+      if (req.role == 'admin'
       || (req.role == 'instructor' && req.user == course.instructorId)) {
         let results = await getSubmissionsByAssignmentIdAndQuery(req.params.id, req.query);
 
         for (s of results.submissions) {
           s.metadata.link =
-            `/assignments/${s.metadata.assignmentId}/submissions/${s.filename}`;
+          `/assignments/${s.metadata.assignmentId}/submissions/${s.filename}`;
         }
         results.submissions = results.submissions.map(s => s.metadata);
 
@@ -279,8 +301,11 @@ router.get('/:id/submissions', authenticate, async (req, res, next) => {
           error: "Not authorized to view submissions for this assignment."
         })
       }
-  } else {
-    next();
+    } else {
+      next();
+    }
+  } catch (err) {
+    next(err);
   }
 });
 
