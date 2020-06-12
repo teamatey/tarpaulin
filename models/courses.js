@@ -65,7 +65,7 @@ exports.updateCourseById = async function (id, course) {
 
       const list = {
         add: [validCourseParts.instructorId ? validCourseParts.instructorId : null],
-        rem: [instructor]
+        remove: [instructor]
       };
       updateUserCoursesByIds(id, list);
 
@@ -117,7 +117,15 @@ exports.deleteCourseById = async function (id) {
   const collection = db.collection('courses');
 
   if (ObjectId.isValid(id)) {
-    const results = await collection
+    let results = await collection.find( { _id: new ObjectId(id) } );
+    const instructor = results[0].instructorId;
+    const list = {
+      add: [],
+      remove: [instructor]
+    };
+    updateUserCoursesByIds(id, list);
+
+    results = await collection
       .deleteOne({ _id: new ObjectId(id) });
     return results.deletedCount > 0;
   } else {
